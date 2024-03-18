@@ -1,17 +1,26 @@
 package org.example;
 
+import burp.api.montoya.BurpExtension;
+import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.http.handler.HttpHandler;
+import burp.api.montoya.logging.Logging;
+import org.example.handler.MyHttpHandler;
+import org.json.JSONException;
+
 //TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
 // click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
-public class Main {
-    public static void main(String[] args) {
-        //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-        // to see how IntelliJ IDEA suggests fixing it.
-        System.out.printf("Hello and welcome!");
+public class Main implements BurpExtension {
+    @Override
+    public void initialize(MontoyaApi api) {
+        Logging logging = api.logging();
+        logging.logToOutput("asdf");
+        api.extension().setName("HTTP Handler Example");
 
-        for (int i = 1; i <= 5; i++) {
-            //TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-            // for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-            System.out.println("i = " + i);
+
+        try {
+            api.http().registerHttpHandler(new MyHttpHandler(api));
+        } catch (JSONException e) {
+            throw new RuntimeException(e);
         }
     }
 }
