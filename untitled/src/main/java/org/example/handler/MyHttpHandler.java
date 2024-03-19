@@ -21,7 +21,7 @@ public class MyHttpHandler implements HttpHandler {
 
     public MyHttpHandler(MontoyaApi api) throws JSONException {
         this.logging = api.logging();
-        packet_parser = new PacketParser();
+        packet_parser = new PacketParser(this.logging);
     }
 
 

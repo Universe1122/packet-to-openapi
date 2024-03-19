@@ -4,21 +4,23 @@ import burp.api.montoya.http.HttpService;
 import burp.api.montoya.http.handler.HttpResponseReceived;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.logging.Logging;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 public class PacketParser {
     public JSONObject openapi;
+    public Logging logging;
 
-    public PacketParser() throws JSONException {
+    public PacketParser(Logging logging) throws JSONException {
         this.openapi = this.init();
+        this.logging = logging;
+        this.logging.logToOutput(this.openapi.toString());
     }
 
     public JSONObject init() throws JSONException {
@@ -37,32 +39,122 @@ public class PacketParser {
         data.put("openapi", "3.0.0");
         data.put("info", info);
         data.put("servers", servers);
-        data.put("paths", new JSONArray());
+        data.put("paths", new JSONObject());
 
         return data;
     }
 
     public void parse(HttpRequest request, HttpResponseReceived response) throws JSONException {
-        RequestParser request_parser = new RequestParser(request);
+        RequestParser request_parser = new RequestParser(request, this.logging);
         ResponseParser response_parser = new ResponseParser(response);
 
         JSONObject path_info = request_parser.parse();
+        this.insert(path_info);
         // TODO
 //        response_parser.parse();
         
         // TODO
         // 새로운 path 추가 될때, 기존에 존재하는 path가 사라지는 이슈 해결하기
-        this.openapi.put("paths", path_info);
+//        this.logging.logToOutput(path_info.toString());
+//        this.openapi.put("paths", path_info);
+//        this.logging.logToOutput(this.openapi.toString());
+//        Iterator i = path_info.keys();
+//        this.openapi.getJSONObject("paths").put(i.next().toString(), "zzzzz");
+//        this.logging.logToOutput(String.valueOf(this.openapi.getJSONObject("paths")));
+    }
+
+    public void insert(JSONObject new_path_info) throws JSONException {
+        JSONObject paths_info = this.openapi.getJSONObject("paths");
+        Iterator paths_info_key = paths_info.keys();
+
+        Iterator new_path_info_key = new_path_info.keys();
+        String new_path_key = new_path_info_key.next().toString();
+
+        boolean check_new_path = true;
+        boolean check_new_method = true;
+
+        // path 가 이미 등록되었는지 확인
+        while(paths_info_key.hasNext()){
+            String path_key = paths_info_key.next().toString();
+
+            // path 가 이미 등록되어 있는 경우,
+            if(path_key.equals(new_path_key)) {
+                JSONObject path_detail_info = paths_info.getJSONObject(path_key);
+                JSONObject new_path_detail_info = new_path_info.getJSONObject(new_path_key);
+
+                Iterator path_detail_methods_key = path_detail_info.keys();
+                Iterator new_path_method_key = new_path_detail_info.keys();
+                String new_method_key = new_path_method_key.next().toString();
+                
+                // method 가 이미 등록되었는지 확인
+                while(path_detail_methods_key.hasNext()){
+                    String path_method_key = path_detail_methods_key.next().toString();
+                    
+                    // method 가 이미 등록되어 있는 경우
+                    if (path_method_key.equals(new_method_key)){
+                        JSONObject method_info = path_detail_info.getJSONObject(path_method_key);
+                        JSONArray parameters_info = method_info.getJSONArray("parameters");
+
+                        JSONObject new_method_info = new_path_detail_info.getJSONObject(new_method_key);
+                        JSONArray new_parameters_info = new_method_info.getJSONArray("parameters");;
+
+                        // 새로 등록할 parameter 가 있는지 확인하기
+                        for(int new_index=0; new_index < new_parameters_info.length(); new_index++){
+                            boolean check_new_parameter = true;
+
+                            JSONObject new_parameter_info = new_parameters_info.getJSONObject(new_index);
+                            String new_parameter_name = new_parameter_info.getString("name");
+
+                            for(int index=0; index < parameters_info.length(); index++){
+                                JSONObject parameter_info = parameters_info.getJSONObject(index);
+                                String parameter_name = parameter_info.getString("name");
+
+                                // 기존에 등록된 parameter 일 경우, 등록하지 않음
+                                if (new_parameter_name.equals(parameter_name)){
+                                    check_new_parameter = false;
+                                    break;
+                                }
+                            }
+                            
+                            // 없는 parameter 일 경우, 추가
+                            if (check_new_parameter) {
+                                parameters_info.put(new_parameter_info);
+                            }
+                        }
+
+                        check_new_method = false;
+                        break;
+                    }
+                }
+                
+                // 새로운 method 인 경우, 추가
+                if(check_new_method){
+                    JSONObject value = new_path_detail_info.getJSONObject(new_method_key);
+                    path_detail_info.put(new_method_key, value);
+                }
+
+                check_new_path = false;
+                break;
+            }
+        }
+
+        // 새로운 path 인 경우, 추가
+        if(check_new_path) {
+            JSONObject value = new_path_info.getJSONObject(new_path_key);
+            paths_info.put(new_path_key, value);
+        }
     }
 
     public static class RequestParser {
         public HttpRequest request;
+        public Logging logging;
 
         // Remove Authorization
         public ArrayList<String> standard_header = new ArrayList<String>(Arrays.asList("A-IM", "Accept", "Accept-Charset", "Accept-Datetime", "Accept-Encoding", "Accept-Language", "Access-Control-Request-Method", "Access-Control-Request-Headers", "Cache-Control", "Connection", "Content-Encoding", "Content-Length", "Content-MD5", "Content-Type", "Cookie", "Date", "Expect", "Forwarded", "From", "Host", "HTTP2-Settings", "If-Match", "If-Modified-Since", "If-None-Match", "If-Range", "If-Unmodified-Since", "Max-Forwards", "Origin", "Pragma", "Prefer", "Proxy-Authorization", "Range", "Referer", "TE", "Trailer", "Transfer-Encoding", "User-Agent", "Upgrade", "Via", "Warning"));
         public ArrayList<String> non_standard_header = new ArrayList<String>(Arrays.asList("Upgrade-Insecure-Requests", "X-Requested-With", "DNT", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Front-End-Https", "X-Http-Method-Override", "X-ATT-DeviceId", "X-Wap-Profile", "Proxy-Connection", "X-UIDH", "X-Csrf-Token", "X-Request-ID","X-Correlation-ID", "Correlation-ID", "Save-Data", "Sec-GPC"));
 
-        public RequestParser(HttpRequest request) {
+        public RequestParser(HttpRequest request, Logging logging) {
+            this.logging = logging;
             this.request = request;
         }
 
@@ -70,16 +162,16 @@ public class PacketParser {
             String _server = this.getServerInfo();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
-            String _parameters = this.getQuery();
+            JSONArray _parameters = this.getQuery();
             List<String> _custom_header = this.getCustomHeader();
 
-            JSONArray parameters = new JSONArray();
-            // TODO
-            // openapi spec 대로 변경하기
-            parameters.put(_parameters);
-
             JSONObject ep_info = new JSONObject();
-            ep_info.put("parameters", parameters);
+            if(_parameters.length() > 0){
+                ep_info.put("parameters", _parameters);
+            }
+            else{
+                ep_info.put("parameters", new JSONArray());
+            }
             ep_info.put("summary", "this is summary");
 
             JSONObject method = new JSONObject();
@@ -112,10 +204,30 @@ public class PacketParser {
             return this.request.method();
         }
 
-        public String getQuery() {
-            // TODO
-            // 어떻게 리턴하는지 보고, & 기준으로 문자열을 쪼개서 리턴할건지 생각하기
-            return this.request.query();
+        public JSONArray getQuery() throws JSONException {
+            if (this.request.query().isEmpty()){
+                return new JSONArray();
+            }
+
+            JSONArray parameters = new JSONArray();
+            String[] queries = this.request.query().split("&");
+
+
+            for (String query: queries){
+                JSONObject parameter_info = new JSONObject();
+
+                String[] data = query.split("=", 2);
+
+                parameter_info.put("name", data[0]);
+                parameter_info.put("in", "query");
+                parameter_info.put("description", "");
+                parameter_info.put("example", data[1]);
+                parameter_info.put("schema", new JSONObject());
+
+                parameters.put(parameter_info);
+            }
+
+            return parameters;
         }
 
         public List<String> getCustomHeader(){

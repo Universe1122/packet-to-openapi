@@ -12,10 +12,7 @@ import org.json.JSONException;
 public class Main implements BurpExtension {
     @Override
     public void initialize(MontoyaApi api) {
-        Logging logging = api.logging();
-        logging.logToOutput("asdf");
         api.extension().setName("HTTP Handler Example");
-
 
         try {
             api.http().registerHttpHandler(new MyHttpHandler(api));
