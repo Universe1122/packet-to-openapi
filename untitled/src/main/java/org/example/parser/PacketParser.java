@@ -49,21 +49,15 @@ public class PacketParser {
         ResponseParser response_parser = new ResponseParser(response);
 
         JSONObject path_info = request_parser.parse();
-        this.insert(path_info);
+        JSONObject response_info = response_parser.parse();
+        this.logging.logToOutput("response: " + response_info.toString());
+        this.insert(path_info, response_info);
         // TODO
 //        response_parser.parse();
-        
-        // TODO
-        // 새로운 path 추가 될때, 기존에 존재하는 path가 사라지는 이슈 해결하기
-//        this.logging.logToOutput(path_info.toString());
-//        this.openapi.put("paths", path_info);
-//        this.logging.logToOutput(this.openapi.toString());
-//        Iterator i = path_info.keys();
-//        this.openapi.getJSONObject("paths").put(i.next().toString(), "zzzzz");
-//        this.logging.logToOutput(String.valueOf(this.openapi.getJSONObject("paths")));
+
     }
 
-    public void insert(JSONObject new_path_info) throws JSONException {
+    public void insert(JSONObject new_path_info, JSONObject new_response_info) throws JSONException {
         JSONObject paths_info = this.openapi.getJSONObject("paths");
         Iterator paths_info_key = paths_info.keys();
 
@@ -72,6 +66,7 @@ public class PacketParser {
 
         boolean check_new_path = true;
         boolean check_new_method = true;
+        boolean check_new_status_code = true;
 
         // path 가 이미 등록되었는지 확인
         while(paths_info_key.hasNext()){
@@ -120,6 +115,29 @@ public class PacketParser {
                             if (check_new_parameter) {
                                 parameters_info.put(new_parameter_info);
                             }
+                        }
+                        // TODO
+                        // 특정 조건때만 response 값이 등록 되는 것 같음. 원인 파악 및 수정하기
+                        // 새로 등록할 response 가 있는지 확인하기
+                        JSONObject responses = method_info.getJSONObject("responses");
+
+                        Iterator responses_key = responses.keys();
+                        Iterator new_responses_key = new_response_info.keys();
+                        String new_response_status_code_key = new_responses_key.next().toString();
+
+                        while(responses_key.hasNext()) {
+                            String response_status_code = responses_key.next().toString();
+
+                            // 이미 등록된 상태코드 인 경우, break
+                            if (response_status_code.equals(new_response_status_code_key)){
+                                check_new_status_code = false;
+                                break;
+                            }
+                        }
+                        
+                        // 새로운 상태코드 인 경우, 추가
+                        if(check_new_status_code) {
+                            responses.put(new_response_status_code_key, new_response_info.getJSONObject(new_response_status_code_key));
                         }
 
                         check_new_method = false;
@@ -173,6 +191,7 @@ public class PacketParser {
                 ep_info.put("parameters", new JSONArray());
             }
             ep_info.put("summary", "this is summary");
+            ep_info.put("responses", new JSONObject());
 
             JSONObject method = new JSONObject();
             method.put(_method.toLowerCase(), ep_info);
@@ -186,14 +205,6 @@ public class PacketParser {
         public String getServerInfo(){
             HttpService http_service = this.request.httpService();
             return http_service.toString();
-//            URI uri = new URI(this.request.url());
-//
-//            String domain = uri.getHost();
-//            String protocol = uri.getScheme();
-//            int port = uri.getPort();
-//            String portString = (port != -1) ? (":" + port) : "";
-//
-//            return protocol + "://" + domain + portString;
         }
 
         public String getPath() {
@@ -257,8 +268,18 @@ public class PacketParser {
             this.response = response;
         }
 
-        public void parse(){
+        public JSONObject parse() throws JSONException {
+            short status_code = this.getStatusCode();
 
+            JSONObject info = new JSONObject();
+            info.put("description", "");
+            info.put("headers", new JSONObject());
+            info.put("content", new JSONObject());
+
+            JSONObject data = new JSONObject();
+            data.put(String.valueOf(status_code), info);
+
+            return data;
         }
 
         public short getStatusCode(){
