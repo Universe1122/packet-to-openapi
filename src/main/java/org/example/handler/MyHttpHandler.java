@@ -34,16 +34,16 @@ public class MyHttpHandler implements HttpHandler {
     public ResponseReceivedAction handleHttpResponseReceived(HttpResponseReceived responseReceived) {
         Annotations annotations = responseReceived.annotations();
         //Highlight all responses where the request had a Content-Length header.
-        if (responseHasContentLengthHeader(responseReceived)) {
-            annotations = annotations.withHighlightColor(HighlightColor.BLUE);
-        }
+//        if (responseHasContentLengthHeader(responseReceived)) {
+//            annotations = annotations.withHighlightColor(HighlightColor.BLUE);
+//        }
 
         if(checkContentType(responseReceived)){
             HttpRequest request = responseReceived.initiatingRequest();
             try {
                 packet_parser.parse(request, responseReceived);
             } catch (JSONException e) {
-                this.logging.logToError("packet parsing error");
+                this.logging.logToError("packet parsing error: " + request.url());
             }
         }
 

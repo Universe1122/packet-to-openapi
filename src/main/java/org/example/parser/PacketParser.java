@@ -66,130 +66,131 @@ public class PacketParser {
             JSONObject new_server_info = new JSONObject();
             new_server_info.put("openapi", this.initOpenApiSpec(new_host));
             new_server_info.put("host", new_host);
-
             this.server.put(new_server_info);
         }
-
         this.insert(path_info, new_host);
-
     }
 
-    public void insert(JSONObject new_path_info, String new_host) throws JSONException {
-        JSONObject openapi = null;
+    public void insert(JSONObject new_path_info, String new_host){
+        try {
+            JSONObject openapi = null;
+            for (int index = 0; index < this.server.length(); index++) {
+                JSONObject server_info = this.server.getJSONObject(index);
+                String host = server_info.getString("host");
 
-        for(int index=0; index<this.server.length(); index++) {
-            JSONObject server_info = this.server.getJSONObject(index);
-            String host = server_info.getString("host");
-
-            if (host.equals(new_host)) {
-                openapi = server_info.getJSONObject("openapi");
-                break;
+                if (host.equals(new_host)) {
+                    openapi = server_info.getJSONObject("openapi");
+                    break;
+                }
             }
-        }
-        assert openapi != null;
+            assert openapi != null;
 
-        JSONObject paths_info = openapi.getJSONObject("paths");
-        Iterator paths_info_key = paths_info.keys();
+            JSONObject paths_info = openapi.getJSONObject("paths");
+            Iterator paths_info_key = paths_info.keys();
+            Iterator new_path_info_key = new_path_info.keys();
+            String new_path_key = new_path_info_key.next().toString();
 
-        Iterator new_path_info_key = new_path_info.keys();
-        String new_path_key = new_path_info_key.next().toString();
+            boolean check_new_path = true;
+            boolean check_new_method = true;
+            boolean check_new_status_code = true;
 
-        boolean check_new_path = true;
-        boolean check_new_method = true;
-        boolean check_new_status_code = true;
+            // path 가 이미 등록되었는지 확인
+            while (paths_info_key.hasNext()) {
+                String path_key = paths_info_key.next().toString();
 
-        // path 가 이미 등록되었는지 확인
-        while(paths_info_key.hasNext()){
-            String path_key = paths_info_key.next().toString();
+                // path 가 이미 등록되어 있는 경우,
+                if (path_key.equals(new_path_key)) {
+                    JSONObject path_detail_info = paths_info.getJSONObject(path_key);
+                    JSONObject new_path_detail_info = new_path_info.getJSONObject(new_path_key);
 
-            // path 가 이미 등록되어 있는 경우,
-            if(path_key.equals(new_path_key)) {
-                JSONObject path_detail_info = paths_info.getJSONObject(path_key);
-                JSONObject new_path_detail_info = new_path_info.getJSONObject(new_path_key);
+                    Iterator path_detail_methods_key = path_detail_info.keys();
+                    Iterator new_path_method_key = new_path_detail_info.keys();
+                    String new_method_key = new_path_method_key.next().toString();
 
-                Iterator path_detail_methods_key = path_detail_info.keys();
-                Iterator new_path_method_key = new_path_detail_info.keys();
-                String new_method_key = new_path_method_key.next().toString();
+                    // method 가 이미 등록되었는지 확인
+                    while (path_detail_methods_key.hasNext()) {
+                        String path_method_key = path_detail_methods_key.next().toString();
 
-                // method 가 이미 등록되었는지 확인
-                while(path_detail_methods_key.hasNext()){
-                    String path_method_key = path_detail_methods_key.next().toString();
+                        // method 가 이미 등록되어 있는 경우
+                        if (path_method_key.equals(new_method_key)) {
+                            JSONObject method_info = path_detail_info.getJSONObject(path_method_key);
+                            JSONArray parameters_info = method_info.getJSONArray("parameters");
 
-                    // method 가 이미 등록되어 있는 경우
-                    if (path_method_key.equals(new_method_key)){
-                        JSONObject method_info = path_detail_info.getJSONObject(path_method_key);
-                        JSONArray parameters_info = method_info.getJSONArray("parameters");
+                            JSONObject new_method_info = new_path_detail_info.getJSONObject(new_method_key);
+                            JSONArray new_parameters_info = new_method_info.getJSONArray("parameters");
+                            ;
 
-                        JSONObject new_method_info = new_path_detail_info.getJSONObject(new_method_key);
-                        JSONArray new_parameters_info = new_method_info.getJSONArray("parameters");;
+                            // 새로 등록할 parameter 가 있는지 확인하기
+                            for (int new_index = 0; new_index < new_parameters_info.length(); new_index++) {
+                                boolean check_new_parameter = true;
 
-                        // 새로 등록할 parameter 가 있는지 확인하기
-                        for(int new_index=0; new_index < new_parameters_info.length(); new_index++){
-                            boolean check_new_parameter = true;
+                                JSONObject new_parameter_info = new_parameters_info.getJSONObject(new_index);
+                                String new_parameter_name = new_parameter_info.getString("name");
 
-                            JSONObject new_parameter_info = new_parameters_info.getJSONObject(new_index);
-                            String new_parameter_name = new_parameter_info.getString("name");
+                                for (int index = 0; index < parameters_info.length(); index++) {
+                                    JSONObject parameter_info = parameters_info.getJSONObject(index);
+                                    String parameter_name = parameter_info.getString("name");
 
-                            for(int index=0; index < parameters_info.length(); index++){
-                                JSONObject parameter_info = parameters_info.getJSONObject(index);
-                                String parameter_name = parameter_info.getString("name");
+                                    // 기존에 등록된 parameter 일 경우, 등록하지 않음
+                                    if (new_parameter_name.equals(parameter_name)) {
+                                        check_new_parameter = false;
+                                        break;
+                                    }
+                                }
 
-                                // 기존에 등록된 parameter 일 경우, 등록하지 않음
-                                if (new_parameter_name.equals(parameter_name)){
-                                    check_new_parameter = false;
+                                // 없는 parameter 일 경우, 추가
+                                if (check_new_parameter) {
+                                    parameters_info.put(new_parameter_info);
+                                }
+                            }
+
+                            // 새로 등록할 response 가 있는지 확인하기
+                            JSONObject responses = method_info.getJSONObject("responses");
+                            JSONObject new_responses = new_method_info.getJSONObject("responses");
+                            Iterator responses_key = responses.keys();
+                            Iterator new_responses_key = new_responses.keys();
+                            String new_response_status_code_key = new_responses_key.next().toString();
+
+                            while (responses_key.hasNext()) {
+                                String response_status_code = responses_key.next().toString();
+
+                                // 이미 등록된 상태코드 인 경우, break
+                                if (response_status_code.equals(new_response_status_code_key)) {
+                                    check_new_status_code = false;
                                     break;
                                 }
                             }
 
-                            // 없는 parameter 일 경우, 추가
-                            if (check_new_parameter) {
-                                parameters_info.put(new_parameter_info);
+                            // 새로운 상태코드 인 경우, 추가
+                            if (check_new_status_code) {
+                                responses.put(new_response_status_code_key, new_method_info.getJSONObject(new_response_status_code_key));
                             }
+
+                            check_new_method = false;
+                            break;
                         }
-
-                        // 새로 등록할 response 가 있는지 확인하기
-                        JSONObject responses = method_info.getJSONObject("responses");
-                        Iterator responses_key = responses.keys();
-                        Iterator new_responses_key = new_method_info.keys();
-                        String new_response_status_code_key = new_responses_key.next().toString();
-
-                        while(responses_key.hasNext()) {
-                            String response_status_code = responses_key.next().toString();
-
-                            // 이미 등록된 상태코드 인 경우, break
-                            if (response_status_code.equals(new_response_status_code_key)){
-                                check_new_status_code = false;
-                                break;
-                            }
-                        }
-
-                        // 새로운 상태코드 인 경우, 추가
-                        if(check_new_status_code) {
-                            responses.put(new_response_status_code_key, new_method_info.getJSONObject(new_response_status_code_key));
-                        }
-
-                        check_new_method = false;
-                        break;
                     }
-                }
 
-                // 새로운 method 인 경우, 추가
-                if(check_new_method){
-                    JSONObject value = new_path_detail_info.getJSONObject(new_method_key);
-                    path_detail_info.put(new_method_key, value);
-                }
+                    // 새로운 method 인 경우, 추가
+                    if (check_new_method) {
+                        JSONObject value = new_path_detail_info.getJSONObject(new_method_key);
+                        path_detail_info.put(new_method_key, value);
+                    }
 
-                check_new_path = false;
-                break;
+                    check_new_path = false;
+                    break;
+                }
+            }
+
+            // 새로운 path 인 경우, 추가
+            if (check_new_path) {
+                JSONObject value = new_path_info.getJSONObject(new_path_key);
+                paths_info.put(new_path_key, value);
             }
         }
-
-        // 새로운 path 인 경우, 추가
-        if(check_new_path) {
-            JSONObject value = new_path_info.getJSONObject(new_path_key);
-            paths_info.put(new_path_key, value);
+        catch (Exception e) {
+            this.logging.logToError(e);
         }
-
 
     }
 
@@ -207,6 +208,7 @@ public class PacketParser {
         }
 
         public JSONObject parse(HttpResponseReceived response) throws JSONException {
+            this.getBody();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
             JSONArray _parameters = this.getQuery();
@@ -285,10 +287,47 @@ public class PacketParser {
             return return_headers;
         }
 
-        public String getBody(){
-            // TODO
-            // body를 파싱해서 리턴하기
-            return this.request.bodyToString();
+        public JSONObject getBody() throws JSONException {
+            String body = this.request.bodyToString();
+
+            if (body.length() == 0){
+                return new JSONObject();
+            }
+
+            JSONObject requestBody = new JSONObject();
+            JSONObject content = new JSONObject();
+            JSONObject applicationJson = new JSONObject();
+            JSONObject schema = new JSONObject();
+            JSONObject properties = new JSONObject();
+            JSONObject example = new JSONObject();
+
+            String content_type = this.request.contentType().name();
+            this.logging.logToOutput(this.getPath());
+            this.logging.logToOutput("content-type: "+ content_type);
+            String[] keyValuePairs = body.split("&");
+            for (String pair : keyValuePairs) {
+                String[] keyValue = pair.split("=", 2);
+                properties.put(keyValue[0], new JSONObject().put("type", "string")); // TODO, type 작성하기
+
+                if(keyValue.length == 2){
+                    example.put(keyValue[0], keyValue[1]);
+                }
+                else{
+                    example.put(keyValue[0], "");
+                }
+            }
+
+            schema.put("type", "object"); // TODO, object 그대로 둬도 되나?
+            schema.put("properties", properties);
+
+            applicationJson.put("schema", schema);
+            applicationJson.put("example", example);
+
+            content.put("application/json", applicationJson); // TODO, request content-type 을 가져와서 key로 둬야 함
+
+            requestBody.put("content", content);
+
+            return requestBody;
         }
     }
 
