@@ -46,18 +46,15 @@ public class PacketParser {
 
     public void parse(HttpRequest request, HttpResponseReceived response) throws JSONException {
         RequestParser request_parser = new RequestParser(request, this.logging);
-        ResponseParser response_parser = new ResponseParser(response);
 
-        JSONObject path_info = request_parser.parse();
-        JSONObject response_info = response_parser.parse();
-        this.logging.logToOutput("response: " + response_info.toString());
-        this.insert(path_info, response_info);
-        // TODO
-//        response_parser.parse();
+        JSONObject path_info = request_parser.parse(response);
+
+        this.logging.logToOutput("path_info: " + path_info.toString());
+        this.insert(path_info);
 
     }
 
-    public void insert(JSONObject new_path_info, JSONObject new_response_info) throws JSONException {
+    public void insert(JSONObject new_path_info) throws JSONException {
         JSONObject paths_info = this.openapi.getJSONObject("paths");
         Iterator paths_info_key = paths_info.keys();
 
@@ -116,13 +113,11 @@ public class PacketParser {
                                 parameters_info.put(new_parameter_info);
                             }
                         }
-                        // TODO
-                        // 특정 조건때만 response 값이 등록 되는 것 같음. 원인 파악 및 수정하기
+
                         // 새로 등록할 response 가 있는지 확인하기
                         JSONObject responses = method_info.getJSONObject("responses");
-
                         Iterator responses_key = responses.keys();
-                        Iterator new_responses_key = new_response_info.keys();
+                        Iterator new_responses_key = new_method_info.keys();
                         String new_response_status_code_key = new_responses_key.next().toString();
 
                         while(responses_key.hasNext()) {
@@ -137,7 +132,7 @@ public class PacketParser {
                         
                         // 새로운 상태코드 인 경우, 추가
                         if(check_new_status_code) {
-                            responses.put(new_response_status_code_key, new_response_info.getJSONObject(new_response_status_code_key));
+                            responses.put(new_response_status_code_key, new_method_info.getJSONObject(new_response_status_code_key));
                         }
 
                         check_new_method = false;
@@ -161,6 +156,8 @@ public class PacketParser {
             JSONObject value = new_path_info.getJSONObject(new_path_key);
             paths_info.put(new_path_key, value);
         }
+
+
     }
 
     public static class RequestParser {
@@ -176,12 +173,13 @@ public class PacketParser {
             this.request = request;
         }
 
-        public JSONObject parse() throws JSONException {
+        public JSONObject parse(HttpResponseReceived response) throws JSONException {
             String _server = this.getServerInfo();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
             JSONArray _parameters = this.getQuery();
             List<String> _custom_header = this.getCustomHeader();
+            ResponseParser response_parser = new ResponseParser(response);
 
             JSONObject ep_info = new JSONObject();
             if(_parameters.length() > 0){
@@ -191,7 +189,7 @@ public class PacketParser {
                 ep_info.put("parameters", new JSONArray());
             }
             ep_info.put("summary", "this is summary");
-            ep_info.put("responses", new JSONObject());
+            ep_info.put("responses", response_parser.parse());
 
             JSONObject method = new JSONObject();
             method.put(_method.toLowerCase(), ep_info);
