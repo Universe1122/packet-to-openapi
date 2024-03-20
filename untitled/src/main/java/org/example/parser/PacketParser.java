@@ -14,16 +14,15 @@ import java.net.URISyntaxException;
 import java.util.*;
 
 public class PacketParser {
-    public JSONObject openapi;
+    public JSONArray server;
     public Logging logging;
 
     public PacketParser(Logging logging) throws JSONException {
-        this.openapi = this.init();
+        this.server = new JSONArray();
         this.logging = logging;
-        this.logging.logToOutput(this.openapi.toString());
     }
 
-    public JSONObject init() throws JSONException {
+    public JSONObject initOpenApiSpec(String new_host) throws JSONException {
         JSONObject license = new JSONObject();
         license.put("name", "MIT");
 
@@ -32,8 +31,10 @@ public class PacketParser {
         info.put("title", "Translate Burpsuite Packet to openapi");
         info.put("license", license);
 
+        JSONObject url = new JSONObject();
+        url.put("url", new_host);
         JSONArray servers = new JSONArray();
-        servers.put(new JSONObject());
+        servers.put(url);
 
         JSONObject data = new JSONObject();
         data.put("openapi", "3.0.0");
@@ -46,16 +47,50 @@ public class PacketParser {
 
     public void parse(HttpRequest request, HttpResponseReceived response) throws JSONException {
         RequestParser request_parser = new RequestParser(request, this.logging);
-
         JSONObject path_info = request_parser.parse(response);
+        String new_host = request_parser.getServerInfo();
 
-        this.logging.logToOutput("path_info: " + path_info.toString());
-        this.insert(path_info);
+        // 새로운 서버인지 확인
+        boolean check_new_host = true;
+        for(int index=0; index<this.server.length(); index++) {
+            JSONObject server_info = this.server.getJSONObject(index);
+            String host = server_info.getString("host");
+
+            // 존재하는 서버 정보인 경우 break
+            if (host.equals(new_host)) {
+                check_new_host = false;
+                break;
+            }
+        }
+
+        // 새로운 서버 정보인 경우, 추가
+        if (check_new_host) {
+            JSONObject new_server_info = new JSONObject();
+            new_server_info.put("openapi", this.initOpenApiSpec(new_host));
+            new_server_info.put("host", new_host);
+
+            this.server.put(new_server_info);
+        }
+
+        this.insert(path_info, new_host);
 
     }
 
-    public void insert(JSONObject new_path_info) throws JSONException {
-        JSONObject paths_info = this.openapi.getJSONObject("paths");
+    public void insert(JSONObject new_path_info, String new_host) throws JSONException {
+        JSONObject openapi = null;
+
+        for(int index=0; index<this.server.length(); index++) {
+            JSONObject server_info = this.server.getJSONObject(index);
+            String host = server_info.getString("host");
+
+            if (host.equals(new_host)) {
+                openapi = server_info.getJSONObject("openapi");
+                break;
+            }
+        }
+        assert openapi != null;
+
+        JSONObject paths_info = openapi.getJSONObject("paths");
         Iterator paths_info_key = paths_info.keys();
 
         Iterator new_path_info_key = new_path_info.keys();
@@ -174,7 +209,6 @@ public class PacketParser {
         }
 
         public JSONObject parse(HttpResponseReceived response) throws JSONException {
-            String _server = this.getServerInfo();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
             JSONArray _parameters = this.getQuery();

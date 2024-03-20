@@ -43,11 +43,11 @@ public class MyHttpHandler implements HttpHandler {
             try {
                 packet_parser.parse(request, responseReceived);
             } catch (JSONException e) {
-                this.logging.logToOutput("packet parsing error");
+                this.logging.logToError("packet parsing error");
             }
         }
 
-        logging.logToOutput(packet_parser.openapi.toString());
+        logging.logToOutput(packet_parser.server.toString());
 
         return continueWith(responseReceived, annotations);
     }
