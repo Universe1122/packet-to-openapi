@@ -50,8 +50,8 @@ public class MyHttpHandler implements ProxyResponseHandler {
                 return true;
             }
         }
-
-        logging.logToOutput("checkContentType() -> false: " + response_content_type);
+        HttpRequest request = response.request();
+        logging.logToError("checkContentType() -> false, url: " + request.url() + ", Content-Type: " + response_content_type);
         return false;
     }
 
@@ -66,7 +66,7 @@ public class MyHttpHandler implements ProxyResponseHandler {
             }
         }
 
-        logging.logToOutput(packet_parser.server.toString());
+//        logging.logToOutput(packet_parser.server.toString());
 
         return ProxyResponseReceivedAction.continueWith(interceptedResponse);
     }

@@ -164,6 +164,8 @@ public class PacketParser {
 
                             // 새로운 상태코드 인 경우, 추가
                             if (check_new_status_code) {
+                                this.logging.logToOutput("new_response_status_code_key: " + new_response_status_code_key);
+                                this.logging.logToOutput("new_response_status_code_key: " + new_method_info.getJSONObject(new_response_status_code_key));
                                 responses.put(new_response_status_code_key, new_method_info.getJSONObject(new_response_status_code_key));
                             }
 
@@ -291,7 +293,7 @@ public class PacketParser {
         public JSONObject getBody() throws JSONException {
             String body = this.request.bodyToString();
 
-            if (body.length() == 0){
+            if (body.isEmpty()){
                 return new JSONObject();
             }
 
@@ -323,13 +325,31 @@ public class PacketParser {
 
             applicationJson.put("schema", schema);
             applicationJson.put("example", example);
-
-            content.put("application/json", applicationJson); // TODO, request content-type 을 가져와서 key로 둬야 함
+            content.put(this.changeContentType(this.request.contentType().toString()), applicationJson);
 
             requestBody.put("content", content);
 
             // TODO request body 중복 검사 해서 ,,, 집어넣을건 넣고 ,,,
             return requestBody;
+        }
+
+        public String changeContentType(String content_type) {
+            // https://portswigger.github.io/burp-extensions-montoya-api/javadoc/burp/api/montoya/http/message/ContentType.html
+            Map<String, String> change_content_type = new HashMap<String, String>();
+            change_content_type.put("JSON", "application/json");
+            change_content_type.put("MULTIPART", "multipart/form-data");
+            change_content_type.put("URL_ENCODED", "application/x-www-form-urlencoded");
+            change_content_type.put("XML", "application/xml");
+
+            for(String key: change_content_type.keySet()){
+                if(key.equals(content_type)) {
+                    return change_content_type.get(key);
+                }
+            }
+
+            this.logging.logToError("changeContentType()");
+            this.logging.logToError("    -> not found content-type: " + content_type);
+            return "application/json";
         }
     }
 
