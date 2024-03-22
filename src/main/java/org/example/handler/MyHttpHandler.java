@@ -66,7 +66,7 @@ public class MyHttpHandler implements ProxyResponseHandler {
             }
         }
 
-//        logging.logToOutput(packet_parser.server.toString());
+        logging.logToOutput(packet_parser.server.toString());
 
         return ProxyResponseReceivedAction.continueWith(interceptedResponse);
     }

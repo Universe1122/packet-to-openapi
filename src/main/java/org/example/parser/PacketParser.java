@@ -167,6 +167,73 @@ public class PacketParser {
                                 responses.put(new_response_status_code_key, new_responses.getJSONObject(new_response_status_code_key));
                             }
 
+                            // 새로 등록할 request body 가 있는지 확인
+                            if(method_info.has("requestBody")){
+                                JSONObject request_body = method_info.getJSONObject("requestBody");
+                                JSONObject new_request_body = new_method_info.getJSONObject("requestBody");
+
+                                if(new_request_body.length() != 0){
+                                    JSONObject request_content = request_body.getJSONObject("content");
+                                    JSONObject new_request_content = new_request_body.getJSONObject("content");
+
+                                    Iterator request_content_type_iter = request_content.keys();
+                                    Iterator new_request_content_type_iter = new_request_content.keys();
+                                    String new_request_content_type_key = new_request_content_type_iter.next().toString();
+
+                                    boolean check_content_type_key = true;
+
+                                    while(request_content_type_iter.hasNext()) {
+                                        String request_content_type_key = request_content_type_iter.next().toString();
+
+                                        // 기존에 이미 있는 content_type 인 경우,
+                                        if(request_content_type_key.equals(new_request_content_type_key)) {
+                                            JSONObject request_content_type = request_content.getJSONObject(request_content_type_key);
+                                            JSONObject new_request_content_type = new_request_content.getJSONObject(request_content_type_key);
+
+                                            JSONObject request_schema = request_content_type.getJSONObject("schema");
+                                            JSONObject new_request_schema = new_request_content_type.getJSONObject("schema");
+
+                                            JSONObject request_properties = request_schema.getJSONObject("properties");
+                                            JSONObject new_request_properties = new_request_schema.getJSONObject("properties");
+                                            JSONObject request_example = request_content_type.getJSONObject("examples");
+                                            JSONObject new_request_example = new_request_content_type.getJSONObject("examples");
+
+
+                                            // 새로운 request body parameter 가 있는지 확인
+                                            Iterator new_request_properties_iter = new_request_properties.keys();
+                                            while(new_request_properties_iter.hasNext()){
+                                                boolean check_new_parameter = true;
+
+                                                String new_parameter_key = new_request_properties_iter.next().toString();
+                                                Iterator request_properties_iter = request_properties.keys();
+
+                                                while(request_properties_iter.hasNext()){
+                                                    String parameter_key = request_properties_iter.next().toString();
+
+                                                    if(parameter_key.equals(new_parameter_key)){
+                                                        check_new_parameter = false;
+                                                        break;
+                                                    }
+                                                }
+
+                                                // 새로운 request body parameter 가 있는 경우, 추가
+                                                if(check_new_parameter) {
+                                                    request_properties.put(new_parameter_key, new_request_properties.getJSONObject(new_parameter_key));
+                                                    request_example.put(new_parameter_key, new_request_example.get(new_parameter_key));
+                                                }
+                                            }
+
+                                            check_content_type_key = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if(check_content_type_key) {
+                                        request_content.put(new_request_content_type_key, new_request_content.getJSONObject(new_request_content_type_key));
+                                    }
+                                }
+                            }
+
                             check_new_method = false;
                             break;
                         }
@@ -209,20 +276,25 @@ public class PacketParser {
         }
 
         public JSONObject parse(InterceptedResponse response) throws JSONException {
-            this.getBody();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
             JSONArray _parameters = this.getQuery();
             List<String> _custom_header = this.getCustomHeader();
             ResponseParser response_parser = new ResponseParser(response);
+            JSONObject _body = this.getBody();
 
             JSONObject ep_info = new JSONObject();
-            if(_parameters.length() > 0){
-                ep_info.put("parameters", _parameters);
-            }
-            else{
+            if(_parameters.length() == 0){
                 ep_info.put("parameters", new JSONArray());
             }
+            else{
+                ep_info.put("parameters", _parameters);
+            }
+
+            if(_body.length() != 0){
+                ep_info.put("requestBody", _body);
+            }
+
             ep_info.put("summary", "this is summary");
             ep_info.put("responses", response_parser.parse());
 
@@ -310,24 +382,26 @@ public class PacketParser {
                 String[] keyValue = pair.split("=", 2);
                 properties.put(keyValue[0], new JSONObject().put("type", "string")); // TODO, type 작성하기
 
+                JSONObject value = new JSONObject();
+                value.put("summary", "");
                 if(keyValue.length == 2){
-                    example.put(keyValue[0], keyValue[1]);
+                    value.put("value", keyValue[1]);
                 }
                 else{
-                    example.put(keyValue[0], "");
+                    value.put("value", "");
                 }
+                example.put(keyValue[0], value);
             }
 
             schema.put("type", "object"); // TODO, object 그대로 둬도 되나?
             schema.put("properties", properties);
 
             applicationJson.put("schema", schema);
-            applicationJson.put("example", example);
+            applicationJson.put("examples", example);
             content.put(this.changeContentType(this.request.contentType().toString()), applicationJson);
 
             requestBody.put("content", content);
 
-            // TODO request body 중복 검사 해서 ,,, 집어넣을건 넣고 ,,,
             return requestBody;
         }
 
