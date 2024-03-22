@@ -164,9 +164,7 @@ public class PacketParser {
 
                             // 새로운 상태코드 인 경우, 추가
                             if (check_new_status_code) {
-                                this.logging.logToOutput("new_response_status_code_key: " + new_response_status_code_key);
-                                this.logging.logToOutput("new_response_status_code_key: " + new_method_info.getJSONObject(new_response_status_code_key));
-                                responses.put(new_response_status_code_key, new_method_info.getJSONObject(new_response_status_code_key));
+                                responses.put(new_response_status_code_key, new_responses.getJSONObject(new_response_status_code_key));
                             }
 
                             check_new_method = false;
