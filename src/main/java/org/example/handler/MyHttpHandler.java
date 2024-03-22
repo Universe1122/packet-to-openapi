@@ -1,21 +1,21 @@
 package org.example.handler;
 
 import burp.api.montoya.MontoyaApi;
-import burp.api.montoya.core.Annotations;
-import burp.api.montoya.core.HighlightColor;
 import burp.api.montoya.http.handler.*;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.logging.Logging;
+import burp.api.montoya.proxy.http.InterceptedResponse;
+import burp.api.montoya.proxy.http.ProxyResponseHandler;
+import burp.api.montoya.proxy.http.ProxyResponseReceivedAction;
+import burp.api.montoya.proxy.http.ProxyResponseToBeSentAction;
 import org.example.parser.PacketParser;
 import org.json.JSONException;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static burp.api.montoya.http.handler.ResponseReceivedAction.continueWith;
-
-public class MyHttpHandler implements HttpHandler {
+public class MyHttpHandler implements ProxyResponseHandler {
     private final Logging logging;
     private final PacketParser packet_parser;
 
@@ -24,43 +24,7 @@ public class MyHttpHandler implements HttpHandler {
         packet_parser = new PacketParser(this.logging);
     }
 
-
-    @Override
-    public RequestToBeSentAction handleHttpRequestToBeSent(HttpRequestToBeSent httpRequestToBeSent) {
-        return null;
-    }
-
-    @Override
-    public ResponseReceivedAction handleHttpResponseReceived(HttpResponseReceived responseReceived) {
-        Annotations annotations = responseReceived.annotations();
-        //Highlight all responses where the request had a Content-Length header.
-//        if (responseHasContentLengthHeader(responseReceived)) {
-//            annotations = annotations.withHighlightColor(HighlightColor.BLUE);
-//        }
-
-        if(checkContentType(responseReceived)){
-            HttpRequest request = responseReceived.initiatingRequest();
-            try {
-                packet_parser.parse(request, responseReceived);
-            } catch (JSONException e) {
-                this.logging.logToError("packet parsing error: " + request.url());
-            }
-        }
-
-        logging.logToOutput(packet_parser.server.toString());
-
-        return continueWith(responseReceived, annotations);
-    }
-
-    private static boolean isPost(HttpRequestToBeSent httpRequestToBeSent) {
-        return httpRequestToBeSent.method().equalsIgnoreCase("POST");
-    }
-
-    private static boolean responseHasContentLengthHeader(HttpResponseReceived httpResponseReceived) {
-        return httpResponseReceived.initiatingRequest().headers().stream().anyMatch(header -> header.name().equalsIgnoreCase("Content-Length"));
-    }
-
-    private boolean checkContentType(HttpResponseReceived response) {
+    private boolean checkContentType(InterceptedResponse response) {
         List<String> allow_content_types = new ArrayList<String>() {
             {
                 add("application/json");
@@ -89,5 +53,26 @@ public class MyHttpHandler implements HttpHandler {
 
         logging.logToOutput("checkContentType() -> false: " + response_content_type);
         return false;
+    }
+
+    @Override
+    public ProxyResponseReceivedAction handleResponseReceived(InterceptedResponse interceptedResponse) {
+        if(checkContentType(interceptedResponse)){
+            HttpRequest request = interceptedResponse.initiatingRequest();
+            try {
+                packet_parser.parse(request, interceptedResponse);
+            } catch (JSONException e) {
+                this.logging.logToError("packet parsing error: " + request.url());
+            }
+        }
+
+        logging.logToOutput(packet_parser.server.toString());
+
+        return ProxyResponseReceivedAction.continueWith(interceptedResponse);
+    }
+
+    @Override
+    public ProxyResponseToBeSentAction handleResponseToBeSent(InterceptedResponse interceptedResponse) {
+        return null;
     }
 }

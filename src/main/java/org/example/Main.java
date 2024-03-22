@@ -11,8 +11,9 @@ public class Main implements BurpExtension {
         api.extension().setName("HTTP Handler Example");
 
         try {
-            api.http().registerHttpHandler(new MyHttpHandler(api));
+            api.proxy().registerResponseHandler(new MyHttpHandler(api));
         } catch (JSONException e) {
+            api.logging().logToError(String.valueOf(e));
             throw new RuntimeException(e);
         }
     }

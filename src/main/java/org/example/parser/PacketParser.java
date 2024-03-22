@@ -5,6 +5,7 @@ import burp.api.montoya.http.handler.HttpResponseReceived;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.logging.Logging;
+import burp.api.montoya.proxy.http.InterceptedResponse;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -43,7 +44,7 @@ public class PacketParser {
         return data;
     }
 
-    public void parse(HttpRequest request, HttpResponseReceived response) throws JSONException {
+    public void parse(HttpRequest request, InterceptedResponse response) throws JSONException {
         RequestParser request_parser = new RequestParser(request, this.logging);
         JSONObject path_info = request_parser.parse(response);
         String new_host = request_parser.getServerInfo();
@@ -207,7 +208,7 @@ public class PacketParser {
             this.request = request;
         }
 
-        public JSONObject parse(HttpResponseReceived response) throws JSONException {
+        public JSONObject parse(InterceptedResponse response) throws JSONException {
             this.getBody();
             String _path = this.getPath();
             String _method = this.getHttpMethod();
@@ -327,13 +328,14 @@ public class PacketParser {
 
             requestBody.put("content", content);
 
+            // TODO request body 중복 검사 해서 ,,, 집어넣을건 넣고 ,,,
             return requestBody;
         }
     }
 
     public static class ResponseParser {
-        public HttpResponseReceived response;
-        public ResponseParser(HttpResponseReceived response) {
+        public InterceptedResponse response;
+        public ResponseParser(InterceptedResponse response) {
             this.response = response;
         }
 
