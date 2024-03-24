@@ -1,6 +1,6 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="burpsuite-requst-packet-to-openapi.main:jar">
-    <output-path>$PROJECT_DIR$/out/artifacts/burpsuite_requst_packet_to_openapi_main_jar</output-path>
+    <output-path>$PROJECT_DIR$</output-path>
     <root id="archive" name="burpsuite-requst-packet-to-openapi.main.jar">
       <element id="module-output" name="burpsuite-requst-packet-to-openapi.main" />
       <element id="extracted-dir" path="$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.json/json/20090211/c183aa3a2a6250293808bba12262c8920ce5a51c/json-20090211.jar" path-in-jar="/" />

@@ -1,27 +1,44 @@
 package org.example.parser;
 
 import burp.api.montoya.http.HttpService;
-import burp.api.montoya.http.handler.HttpResponseReceived;
 import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.logging.Logging;
 import burp.api.montoya.proxy.http.InterceptedResponse;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PacketParser {
     public JSONArray server;
     public Logging logging;
+    public AtomicInteger lock;
+    public int isCodeSave;
 
-    public PacketParser(Logging logging) throws JSONException {
+    public PacketParser(Logging logging){
         this.server = new JSONArray();
         this.logging = logging;
+        this.lock = new AtomicInteger(0);
+        this.isCodeSave = 0;
     }
 
-    public JSONObject initOpenApiSpec(String new_host) throws JSONException {
+    public void waitLock() throws InterruptedException {
+        while (true) {
+            Thread.sleep(100);
+            if (lock.compareAndSet(0, 1)) {
+                break;
+            }
+        }
+    }
+
+    public JSONObject initOpenApiSpec(String new_host) {
         JSONObject license = new JSONObject();
         license.put("name", "MIT");
 
@@ -33,7 +50,7 @@ public class PacketParser {
         JSONObject url = new JSONObject();
         url.put("url", new_host);
         JSONArray servers = new JSONArray();
-        servers.put(url);
+        servers.add(url);
 
         JSONObject data = new JSONObject();
         data.put("openapi", "3.0.0");
@@ -44,93 +61,92 @@ public class PacketParser {
         return data;
     }
 
-    public void parse(HttpRequest request, InterceptedResponse response) throws JSONException {
+    public synchronized void parse(HttpRequest request, InterceptedResponse response) throws InterruptedException {
+        this.waitLock();
+
         RequestParser request_parser = new RequestParser(request, this.logging);
         JSONObject path_info = request_parser.parse(response);
         String new_host = request_parser.getServerInfo();
 
-        // 새로운 서버인지 확인
         boolean check_new_host = true;
-        for(int index=0; index<this.server.length(); index++) {
-            JSONObject server_info = this.server.getJSONObject(index);
-            String host = server_info.getString("host");
+        for (Object server_infoObj : this.server) {
+            JSONObject server_info = (JSONObject) server_infoObj;
+            String host = (String) server_info.get("host");
 
-            // 존재하는 서버 정보인 경우 break
             if (host.equals(new_host)) {
                 check_new_host = false;
                 break;
             }
         }
 
-        // 새로운 서버 정보인 경우, 추가
         if (check_new_host) {
             JSONObject new_server_info = new JSONObject();
-            new_server_info.put("openapi", this.initOpenApiSpec(new_host));
+            new_server_info.put("openapi", initOpenApiSpec(new_host));
             new_server_info.put("host", new_host);
-            this.server.put(new_server_info);
+            this.server.add(new_server_info);
         }
+
         this.insert(path_info, new_host);
+        this.lock.set(0);
     }
 
-    public void insert(JSONObject new_path_info, String new_host){
+    public void insert(JSONObject new_path_info, String new_host) {
         try {
             JSONObject openapi = null;
-            for (int index = 0; index < this.server.length(); index++) {
-                JSONObject server_info = this.server.getJSONObject(index);
-                String host = server_info.getString("host");
+            for (Object server_infoObj : this.server) {
+                JSONObject server_info = (JSONObject) server_infoObj;
+                String host = (String) server_info.get("host");
 
                 if (host.equals(new_host)) {
-                    openapi = server_info.getJSONObject("openapi");
+                    openapi = (JSONObject) server_info.get("openapi");
                     break;
                 }
             }
             assert openapi != null;
 
-            JSONObject paths_info = openapi.getJSONObject("paths");
-            Iterator paths_info_key = paths_info.keys();
-            Iterator new_path_info_key = new_path_info.keys();
-            String new_path_key = new_path_info_key.next().toString();
+            JSONObject paths_info = (JSONObject) openapi.get("paths");
+            Iterator paths_info_key = paths_info.keySet().iterator();
+            Iterator new_path_info_key = new_path_info.keySet().iterator();
+            String new_path_key = (String) new_path_info_key.next();
 
             boolean check_new_path = true;
             boolean check_new_method = true;
             boolean check_new_status_code = true;
 
-            // path 가 이미 등록되었는지 확인
             while (paths_info_key.hasNext()) {
-                String path_key = paths_info_key.next().toString();
+                String path_key = (String) paths_info_key.next();
 
                 // path 가 이미 등록되어 있는 경우,
                 if (path_key.equals(new_path_key)) {
-                    JSONObject path_detail_info = paths_info.getJSONObject(path_key);
-                    JSONObject new_path_detail_info = new_path_info.getJSONObject(new_path_key);
+                    JSONObject path_detail_info = (JSONObject) paths_info.get(path_key);
+                    JSONObject new_path_detail_info = (JSONObject) new_path_info.get(new_path_key);
 
-                    Iterator path_detail_methods_key = path_detail_info.keys();
-                    Iterator new_path_method_key = new_path_detail_info.keys();
-                    String new_method_key = new_path_method_key.next().toString();
+                    Iterator path_detail_methods_key = path_detail_info.keySet().iterator();
+                    Iterator new_path_method_key = new_path_detail_info.keySet().iterator();
+                    String new_method_key = (String) new_path_method_key.next();
 
                     // method 가 이미 등록되었는지 확인
                     while (path_detail_methods_key.hasNext()) {
-                        String path_method_key = path_detail_methods_key.next().toString();
+                        String path_method_key = (String) path_detail_methods_key.next();
 
                         // method 가 이미 등록되어 있는 경우
                         if (path_method_key.equals(new_method_key)) {
-                            JSONObject method_info = path_detail_info.getJSONObject(path_method_key);
-                            JSONArray parameters_info = method_info.getJSONArray("parameters");
+                            JSONObject method_info = (JSONObject) path_detail_info.get(path_method_key);
+                            JSONArray parameters_info = (JSONArray) method_info.get("parameters");
 
-                            JSONObject new_method_info = new_path_detail_info.getJSONObject(new_method_key);
-                            JSONArray new_parameters_info = new_method_info.getJSONArray("parameters");
-                            ;
+                            JSONObject new_method_info = (JSONObject) new_path_detail_info.get(new_method_key);
+                            JSONArray new_parameters_info = (JSONArray) new_method_info.get("parameters");
 
                             // 새로 등록할 parameter 가 있는지 확인하기
-                            for (int new_index = 0; new_index < new_parameters_info.length(); new_index++) {
+                            for (Object new_parameter_infoObj : new_parameters_info) {
+                                JSONObject new_parameter_info = (JSONObject) new_parameter_infoObj;
+                                String new_parameter_name = (String) new_parameter_info.get("name");
+
                                 boolean check_new_parameter = true;
 
-                                JSONObject new_parameter_info = new_parameters_info.getJSONObject(new_index);
-                                String new_parameter_name = new_parameter_info.getString("name");
-
-                                for (int index = 0; index < parameters_info.length(); index++) {
-                                    JSONObject parameter_info = parameters_info.getJSONObject(index);
-                                    String parameter_name = parameter_info.getString("name");
+                                for (Object parameter_infoObj : parameters_info) {
+                                    JSONObject parameter_info = (JSONObject) parameter_infoObj;
+                                    String parameter_name = (String) parameter_info.get("name");
 
                                     // 기존에 등록된 parameter 일 경우, 등록하지 않음
                                     if (new_parameter_name.equals(parameter_name)) {
@@ -141,19 +157,19 @@ public class PacketParser {
 
                                 // 없는 parameter 일 경우, 추가
                                 if (check_new_parameter) {
-                                    parameters_info.put(new_parameter_info);
+                                    parameters_info.add(new_parameter_info);
                                 }
                             }
 
                             // 새로 등록할 response 가 있는지 확인하기
-                            JSONObject responses = method_info.getJSONObject("responses");
-                            JSONObject new_responses = new_method_info.getJSONObject("responses");
-                            Iterator responses_key = responses.keys();
-                            Iterator new_responses_key = new_responses.keys();
-                            String new_response_status_code_key = new_responses_key.next().toString();
+                            JSONObject responses = (JSONObject) method_info.get("responses");
+                            JSONObject new_responses = (JSONObject) new_method_info.get("responses");
+                            Iterator responses_key = responses.keySet().iterator();
+                            Iterator new_responses_key = new_responses.keySet().iterator();
+                            String new_response_status_code_key = (String) new_responses_key.next();
 
                             while (responses_key.hasNext()) {
-                                String response_status_code = responses_key.next().toString();
+                                String response_status_code = (String) responses_key.next();
 
                                 // 이미 등록된 상태코드 인 경우, break
                                 if (response_status_code.equals(new_response_status_code_key)) {
@@ -164,61 +180,60 @@ public class PacketParser {
 
                             // 새로운 상태코드 인 경우, 추가
                             if (check_new_status_code) {
-                                responses.put(new_response_status_code_key, new_responses.getJSONObject(new_response_status_code_key));
+                                responses.put(new_response_status_code_key, new_responses.get(new_response_status_code_key));
                             }
 
                             // 새로 등록할 request body 가 있는지 확인
-                            if(method_info.has("requestBody")){
-                                JSONObject request_body = method_info.getJSONObject("requestBody");
-                                JSONObject new_request_body = new_method_info.getJSONObject("requestBody");
+                            if (method_info.containsKey("requestBody")) {
+                                JSONObject request_body = (JSONObject) method_info.get("requestBody");
+                                JSONObject new_request_body = (JSONObject) new_method_info.get("requestBody");
 
-                                if(new_request_body.length() != 0){
-                                    JSONObject request_content = request_body.getJSONObject("content");
-                                    JSONObject new_request_content = new_request_body.getJSONObject("content");
+                                if (new_request_body.size() != 0) {
+                                    JSONObject request_content = (JSONObject) request_body.get("content");
+                                    JSONObject new_request_content = (JSONObject) new_request_body.get("content");
 
-                                    Iterator request_content_type_iter = request_content.keys();
-                                    Iterator new_request_content_type_iter = new_request_content.keys();
-                                    String new_request_content_type_key = new_request_content_type_iter.next().toString();
+                                    Iterator request_content_type_iter = request_content.keySet().iterator();
+                                    Iterator new_request_content_type_iter = new_request_content.keySet().iterator();
+                                    String new_request_content_type_key = (String) new_request_content_type_iter.next();
 
                                     boolean check_content_type_key = true;
 
-                                    while(request_content_type_iter.hasNext()) {
-                                        String request_content_type_key = request_content_type_iter.next().toString();
+                                    while (request_content_type_iter.hasNext()) {
+                                        String request_content_type_key = (String) request_content_type_iter.next();
 
                                         // 기존에 이미 있는 content_type 인 경우,
-                                        if(request_content_type_key.equals(new_request_content_type_key)) {
-                                            JSONObject request_content_type = request_content.getJSONObject(request_content_type_key);
-                                            JSONObject new_request_content_type = new_request_content.getJSONObject(request_content_type_key);
+                                        if (request_content_type_key.equals(new_request_content_type_key)) {
+                                            JSONObject request_content_type = (JSONObject) request_content.get(request_content_type_key);
+                                            JSONObject new_request_content_type = (JSONObject) new_request_content.get(request_content_type_key);
 
-                                            JSONObject request_schema = request_content_type.getJSONObject("schema");
-                                            JSONObject new_request_schema = new_request_content_type.getJSONObject("schema");
+                                            JSONObject request_schema = (JSONObject) request_content_type.get("schema");
+                                            JSONObject new_request_schema = (JSONObject) new_request_content_type.get("schema");
 
-                                            JSONObject request_properties = request_schema.getJSONObject("properties");
-                                            JSONObject new_request_properties = new_request_schema.getJSONObject("properties");
-                                            JSONObject request_example = request_content_type.getJSONObject("examples");
-                                            JSONObject new_request_example = new_request_content_type.getJSONObject("examples");
-
+                                            JSONObject request_properties = (JSONObject) request_schema.get("properties");
+                                            JSONObject new_request_properties = (JSONObject) new_request_schema.get("properties");
+                                            JSONObject request_example = (JSONObject) request_content_type.get("examples");
+                                            JSONObject new_request_example = (JSONObject) new_request_content_type.get("examples");
 
                                             // 새로운 request body parameter 가 있는지 확인
-                                            Iterator new_request_properties_iter = new_request_properties.keys();
-                                            while(new_request_properties_iter.hasNext()){
+                                            Iterator new_request_properties_iter = new_request_properties.keySet().iterator();
+                                            while (new_request_properties_iter.hasNext()) {
+                                                String new_parameter_key = (String) new_request_properties_iter.next();
+                                                Iterator request_properties_iter = request_properties.keySet().iterator();
+
                                                 boolean check_new_parameter = true;
 
-                                                String new_parameter_key = new_request_properties_iter.next().toString();
-                                                Iterator request_properties_iter = request_properties.keys();
+                                                while (request_properties_iter.hasNext()) {
+                                                    String parameter_key = (String) request_properties_iter.next();
 
-                                                while(request_properties_iter.hasNext()){
-                                                    String parameter_key = request_properties_iter.next().toString();
-
-                                                    if(parameter_key.equals(new_parameter_key)){
+                                                    if (parameter_key.equals(new_parameter_key)) {
                                                         check_new_parameter = false;
                                                         break;
                                                     }
                                                 }
 
                                                 // 새로운 request body parameter 가 있는 경우, 추가
-                                                if(check_new_parameter) {
-                                                    request_properties.put(new_parameter_key, new_request_properties.getJSONObject(new_parameter_key));
+                                                if (check_new_parameter) {
+                                                    request_properties.put(new_parameter_key, new_request_properties.get(new_parameter_key));
                                                     request_example.put(new_parameter_key, new_request_example.get(new_parameter_key));
                                                 }
                                             }
@@ -228,8 +243,8 @@ public class PacketParser {
                                         }
                                     }
 
-                                    if(check_content_type_key) {
-                                        request_content.put(new_request_content_type_key, new_request_content.getJSONObject(new_request_content_type_key));
+                                    if (check_content_type_key) {
+                                        request_content.put(new_request_content_type_key, new_request_content.get(new_request_content_type_key));
                                     }
                                 }
                             }
@@ -241,8 +256,7 @@ public class PacketParser {
 
                     // 새로운 method 인 경우, 추가
                     if (check_new_method) {
-                        JSONObject value = new_path_detail_info.getJSONObject(new_method_key);
-                        path_detail_info.put(new_method_key, value);
+                        path_detail_info.put(new_method_key, new_path_detail_info.get(new_method_key));
                     }
 
                     check_new_path = false;
@@ -252,12 +266,10 @@ public class PacketParser {
 
             // 새로운 path 인 경우, 추가
             if (check_new_path) {
-                JSONObject value = new_path_info.getJSONObject(new_path_key);
-                paths_info.put(new_path_key, value);
+                paths_info.put(new_path_key, new_path_info.get(new_path_key));
             }
-        }
-        catch (Exception e) {
-            this.logging.logToError(e);
+        } catch (Exception e) {
+            this.logging.logToError(String.valueOf(e));
         }
 
     }
@@ -275,7 +287,7 @@ public class PacketParser {
             this.request = request;
         }
 
-        public JSONObject parse(InterceptedResponse response) throws JSONException {
+        public JSONObject parse(InterceptedResponse response){
             String _path = this.getPath();
             String _method = this.getHttpMethod();
             JSONArray _parameters = this.getQuery();
@@ -284,14 +296,14 @@ public class PacketParser {
             JSONObject _body = this.getBody();
 
             JSONObject ep_info = new JSONObject();
-            if(_parameters.length() == 0){
+            if(_parameters.isEmpty()){
                 ep_info.put("parameters", new JSONArray());
             }
             else{
                 ep_info.put("parameters", _parameters);
             }
 
-            if(_body.length() != 0){
+            if(_body.isEmpty()){
                 ep_info.put("requestBody", _body);
             }
 
@@ -320,7 +332,7 @@ public class PacketParser {
             return this.request.method();
         }
 
-        public JSONArray getQuery() throws JSONException {
+        public JSONArray getQuery(){
             if (this.request.query().isEmpty()){
                 return new JSONArray();
             }
@@ -340,7 +352,7 @@ public class PacketParser {
                 parameter_info.put("example", data[1]);
                 parameter_info.put("schema", new JSONObject());
 
-                parameters.put(parameter_info);
+                parameters.add(parameter_info);
             }
 
             return parameters;
@@ -352,7 +364,7 @@ public class PacketParser {
 
             for (HttpHeader header: headers){
 
-                if (Arrays.asList(standard_header).contains(header.name()) == false) {
+                if (Arrays.asList(this.standard_header).contains(header.name()) == false) {
                     return_headers.add(header.name());
                 }
             }
@@ -360,7 +372,7 @@ public class PacketParser {
             return return_headers;
         }
 
-        public JSONObject getBody() throws JSONException {
+        public JSONObject getBody(){
             String body = this.request.bodyToString();
 
             if (body.isEmpty()){
@@ -377,6 +389,7 @@ public class PacketParser {
             String content_type = this.request.contentType().name();
             this.logging.logToOutput(this.getPath());
             this.logging.logToOutput("content-type: "+ content_type);
+            // TODO, content-type에 따라 파싱 다르게 하기
             String[] keyValuePairs = body.split("&");
             for (String pair : keyValuePairs) {
                 String[] keyValue = pair.split("=", 2);
@@ -431,7 +444,7 @@ public class PacketParser {
             this.response = response;
         }
 
-        public JSONObject parse() throws JSONException {
+        public JSONObject parse() {
             short status_code = this.getStatusCode();
 
             JSONObject info = new JSONObject();
@@ -452,5 +465,21 @@ public class PacketParser {
         public String getBody() {
             return this.response.bodyToString();
         }
+    }
+
+    public void load(String file_path) throws InterruptedException, IOException, ParseException {
+        this.logging.logToOutput("Loading data..");
+        this.waitLock();
+
+        JSONParser parser = new JSONParser();
+        FileReader reader = new FileReader(file_path);
+        Object obj = parser.parse(reader);
+        JSONArray jsonObject = (JSONArray) obj;
+
+        reader.close();
+
+        this.server = jsonObject;
+        this.lock.set(0);
+        this.logging.logToOutput("Loading data Done");
     }
 }
