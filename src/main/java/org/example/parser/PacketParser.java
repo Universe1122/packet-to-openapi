@@ -303,7 +303,7 @@ public class PacketParser {
                 ep_info.put("parameters", _parameters);
             }
 
-            if(_body.isEmpty()){
+            if(!_body.isEmpty()){
                 ep_info.put("requestBody", _body);
             }
 
