@@ -32,7 +32,7 @@ public class PacketParser {
     public void waitLock() throws InterruptedException {
         while (true) {
             Thread.sleep(100);
-            if (lock.compareAndSet(0, 1)) {
+            if (this.lock.compareAndSet(0, 1)) {
                 break;
             }
         }
@@ -62,32 +62,39 @@ public class PacketParser {
     }
 
     public synchronized void parse(HttpRequest request, InterceptedResponse response) throws InterruptedException {
-        this.waitLock();
+        try{
+            this.waitLock();
 
-        RequestParser request_parser = new RequestParser(request, this.logging);
-        JSONObject path_info = request_parser.parse(response);
-        String new_host = request_parser.getServerInfo();
+            RequestParser request_parser = new RequestParser(request, this.logging);
+            JSONObject path_info = request_parser.parse(response);
+            String new_host = request_parser.getServerInfo();
 
-        boolean check_new_host = true;
-        for (Object server_infoObj : this.server) {
-            JSONObject server_info = (JSONObject) server_infoObj;
-            String host = (String) server_info.get("host");
+            boolean check_new_host = true;
+            for (Object server_infoObj : this.server) {
+                JSONObject server_info = (JSONObject) server_infoObj;
+                String host = (String) server_info.get("host");
 
-            if (host.equals(new_host)) {
-                check_new_host = false;
-                break;
+                if (host.equals(new_host)) {
+                    check_new_host = false;
+                    break;
+                }
             }
-        }
 
-        if (check_new_host) {
-            JSONObject new_server_info = new JSONObject();
-            new_server_info.put("openapi", initOpenApiSpec(new_host));
-            new_server_info.put("host", new_host);
-            this.server.add(new_server_info);
-        }
+            if (check_new_host) {
+                JSONObject new_server_info = new JSONObject();
+                new_server_info.put("openapi", initOpenApiSpec(new_host));
+                new_server_info.put("host", new_host);
+                this.server.add(new_server_info);
+            }
 
-        this.insert(path_info, new_host);
-        this.lock.set(0);
+            this.insert(path_info, new_host);
+        }
+        catch (Exception e){
+            this.logging.logToOutput(String.valueOf(e));
+        }
+        finally {
+            this.lock.set(0);
+        }
     }
 
     public void insert(JSONObject new_path_info, String new_host) {
@@ -468,18 +475,25 @@ public class PacketParser {
     }
 
     public void load(String file_path) throws InterruptedException, IOException, ParseException {
-        this.logging.logToOutput("Loading data..");
-        this.waitLock();
+        try{
+            this.logging.logToOutput("Loading data..");
+            this.waitLock();
 
-        JSONParser parser = new JSONParser();
-        FileReader reader = new FileReader(file_path);
-        Object obj = parser.parse(reader);
-        JSONArray jsonObject = (JSONArray) obj;
+            JSONParser parser = new JSONParser();
+            FileReader reader = new FileReader(file_path);
+            Object obj = parser.parse(reader);
+            JSONArray jsonObject = (JSONArray) obj;
 
-        reader.close();
+            reader.close();
 
-        this.server = jsonObject;
-        this.lock.set(0);
-        this.logging.logToOutput("Loading data Done");
+            this.server = jsonObject;
+            this.logging.logToOutput("Loading data Done");
+        }
+        catch (Exception e){
+            this.logging.logToOutput(String.valueOf(e));
+        }
+        finally {
+            this.lock.set(0);
+        }
     }
 }

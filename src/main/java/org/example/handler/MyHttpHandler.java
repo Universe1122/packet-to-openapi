@@ -32,6 +32,15 @@ public class MyHttpHandler implements ProxyResponseHandler {
     public MyHttpHandler(MontoyaApi api){
         this.logging = api.logging();
         this.packet_parser = new PacketParser(this.logging);
+        try{
+            this.logging.logToOutput("Init: get data");
+            this.packet_parser.load(this.dir + this.filename);
+            this.logging.logToOutput("Init: Done");
+        }
+        catch (Exception e){
+            this.logging.logToOutput(String.valueOf(e));
+        }
+
         Thread thread = new Thread(new FileChangeWatcher(api.logging(), this.packet_parser, this.dir, this.filename));
         thread.start();
     }
@@ -91,18 +100,20 @@ public class MyHttpHandler implements ProxyResponseHandler {
     public void save(JSONArray data) throws InterruptedException {
         this.logging.logToOutput("Saving packet info...");
         this.packet_parser.isCodeSave = 1;
-        this.packet_parser.waitLock();
 
         try {
+            this.packet_parser.waitLock();
             FileWriter file = new FileWriter(this.dir + this.filename);
             JSONValue.writeJSONString(data, file);
             file.flush();
             file.close();
+            this.logging.logToOutput("Done");
         } catch (IOException e) {
             this.logging.logToError("파일에 내용을 쓰는 중 오류가 발생했습니다: " + e.getMessage());
         }
-        this.logging.logToOutput("Done");
-        this.packet_parser.lock.set(0);
+        finally {
+            this.packet_parser.lock.set(0);
+        }
     }
 
     @Override
